@@ -1,0 +1,22 @@
+listen: ":8080"
+
+auth:
+  jwt_secret: "super-secret-change-me"
+
+audit_log: "stdout"
+
+routes:
+  - path: "/portainer"
+    upstream: "http://localhost:9000"
+    policy:
+      allow_roles: ["admin"]
+
+  - path: "/n8n"
+    upstream: "http://localhost:5678"
+    policy:
+      allow_subjects: ["andrew@home"]
+
+  - path: "/health"
+    upstream: "http://localhost:9000"
+    policy:
+      public: true

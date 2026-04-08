@@ -1,0 +1,12 @@
+listen: ":8000"
+
+auth:
+  jwt_secret: "test-secret-123"
+
+audit_log: "stdout"
+
+routes:
+  - path: "/"
+    upstream: "http://httpbin.org"
+    policy:
+      allow_roles: ["admin"]
