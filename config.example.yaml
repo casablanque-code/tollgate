@@ -1,7 +1,7 @@
 listen: ":8080"
 
 auth:
-  jwt_secret: "super-secret-change-me"
+  jwt_secret: "change-me-use-strong-secret"
 
 audit_log: "stdout"
 
@@ -14,7 +14,12 @@ routes:
   - path: "/n8n"
     upstream: "http://localhost:5678"
     policy:
-      allow_subjects: ["andrew@home"]
+      allow_roles: ["admin"]
+
+  - path: "/demo"
+    upstream: "http://httpbin.org"
+    policy:
+      allow_roles: ["admin"]
 
   - path: "/health"
     upstream: "http://localhost:9000"

@@ -1,0 +1,16 @@
+services:
+  tollgate:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.example.yaml:/app/config.yaml:ro
+    depends_on:
+      - httpbin
+    environment:
+      - TOLLGATE_CONFIG=/app/config.yaml
+
+  httpbin:
+    image: kennethreitz/httpbin
+    ports:
+      - "8081:80"
