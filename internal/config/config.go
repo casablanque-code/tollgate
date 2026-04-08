@@ -36,7 +36,8 @@ type Route struct {
 
     // Куда форвардим
     Upstream string `yaml:"upstream"`  // "http://localhost:9000"
-
+    //path
+    StripPath  bool   `yaml:"strip_path"`
     // Политика доступа
     Policy   Policy `yaml:"policy"`
 }
