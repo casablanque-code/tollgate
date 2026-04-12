@@ -1,6 +1,7 @@
 package config
 
 import (
+	"time"
 "fmt"
 "os"
 
@@ -12,6 +13,13 @@ Listen   string     `yaml:"listen"`
 Auth     AuthConfig `yaml:"auth"`
 Routes   []Route    `yaml:"routes"`
 AuditLog string     `yaml:"audit_log"`
+RateLimit RateLimitConfig `yaml:"rate_limit"`
+}
+
+type RateLimitConfig struct {
+	Enabled  bool          `yaml:"enabled"`
+	Max      int           `yaml:"max"`       // запросов
+	Window   time.Duration `yaml:"window"`    // за период
 }
 
 type AuthConfig struct {

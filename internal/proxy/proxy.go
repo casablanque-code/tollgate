@@ -10,16 +10,18 @@ import (
 "github.com/casablanque-code/tollgate/internal/auth"
 "github.com/casablanque-code/tollgate/internal/config"
 "github.com/casablanque-code/tollgate/internal/policy"
+"github.com/casablanque-code/tollgate/internal/ratelimit"
 )
 
 type Handler struct {
 routes   []config.Route
 verifier *auth.Verifier
 logger   *audit.Logger
+limiter  *ratelimit.Limiter
 }
 
-func New(routes []config.Route, v *auth.Verifier, l *audit.Logger) *Handler {
-return &Handler{routes: routes, verifier: v, logger: l}
+func New(routes []config.Route, v *auth.Verifier, l *audit.Logger, limiter *ratelimit.Limiter) *Handler {
+return &Handler{routes: routes, verifier: v, logger: l, limiter: limiter}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -27,6 +29,16 @@ route := h.matchRoute(r)
 if route == nil {
 http.Error(w, "not found", http.StatusNotFound)
 return
+}
+
+// Rate limiting
+if h.limiter != nil {
+    ip := ratelimit.ExtractIP(r)
+    if !h.limiter.Allow(ip) {
+        h.logger.Log(r, "", nil, "deny", "rate limit exceeded", "", http.StatusTooManyRequests)
+        http.Error(w, "too many requests", http.StatusTooManyRequests)
+        return
+    }
 }
 
 // Strip path prefix перед форвардом
