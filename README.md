@@ -1,19 +1,24 @@
 # tollgate
 
-Identity-aware Zero Trust reverse proxy. Sits in front of your services and enforces JWT-based access control before forwarding any request. [client] → [tollgate :8080]
+Identity-aware Zero Trust reverse proxy. Sits in front of your services and enforces JWT-based access control before forwarding any request.
+[browser] → [tollgate :8080]
 │
+├── /login — username + password → JWT cookie
 ├── verify RS256 JWT (iss, aud, exp)
 ├── evaluate policy (subject / role / method / path)
 ├── rate limit per IP
 ├── inject identity headers
 └── forward to upstream
 │
-audit log (JSON) Built in Go. Single binary, single config file, no external dependencies.
+audit log (JSON)
+Built in Go. Single binary, single config file, no external dependencies.
 
 ---
 
 ## Features
 
+- **Login page** — username/password auth, JWT issued as `HttpOnly` cookie, no browser extension needed
+- **Dashboard** — after login, shows all available services in one place
 - **RS256 JWT verification** — asymmetric keys, tollgate holds only the public key and cannot forge tokens
 - **Issuer / audience validation** — rejects tokens from other services
 - **Identity-aware policy** — allow by subject, role, HTTP method, and path pattern
@@ -41,9 +46,16 @@ openssl genrsa -out keys/private.pem 2048
 openssl rsa -in keys/private.pem -pubout -out keys/public.pem
 ```
 
-Keep `keys/private.pem` secret — it never leaves the machine that issues tokens. Tollgate only needs `keys/public.pem`.
+Keep `keys/private.pem` secret — it never leaves the server. Tollgate uses it only to sign login tokens.
 
-### 3. Configure
+### 3. Hash passwords for your users
+
+```bash
+pip3 install bcrypt
+python3 scripts/hash_password.py "your-password"
+```
+
+### 4. Configure
 
 ```bash
 cp config.example.yaml config.yaml
@@ -56,6 +68,7 @@ listen: ":8080"
 
 auth:
   jwt_public_key_file: "keys/public.pem"
+  jwt_private_key_file: "keys/private.pem"
   issuer: "tollgate"
   audience: "tollgate"
 
@@ -66,15 +79,31 @@ rate_limit:
   max: 100
   window: 1m
 
+users:
+  - username: "alice"
+    password_hash: "$2b$10$..."   # from hash_password.py
+    email: "alice@example.com"
+    roles: ["admin"]
+  - username: "bob"
+    password_hash: "$2b$10$..."
+    email: "bob@example.com"
+    roles: ["employee"]
+
 routes:
   - path: "/portainer"
     upstream: "http://localhost:9000"
     strip_path: true
     policy:
-      allow_subjects: ["alice"]
+      allow_roles: ["admin"]
       rules:
         - methods: ["GET", "POST", "PUT", "PATCH"]
           paths: ["/*"]
+
+  - path: "/app"
+    upstream: "http://localhost:3000"
+    strip_path: true
+    policy:
+      allow_roles: ["admin", "employee"]
 
   - path: "/health"
     upstream: "http://localhost:9000"
@@ -82,39 +111,49 @@ routes:
       public: true
 ```
 
-### 4. Build and run
+### 5. Build and run
 
 ```bash
 go build -o tollgate ./cmd/tollgate/
 ./tollgate --config config.yaml
 ```
 
-### 5. Generate a token
+Open `http://localhost:8080/` — you will be redirected to the login page.
 
+---
+
+## User management
+
+Users are defined in `config.yaml`. To add a user:
+
+**1. Generate a password hash**
 ```bash
-pip3 install cryptography
-python3 scripts/gen_token.py \
-  --private-key keys/private.pem \
-  --sub "alice" \
-  --roles "admin" \
-  --issuer "tollgate" \
-  --audience "tollgate" \
-  --exp 31536000
+python3 scripts/hash_password.py "password123"
+# → $2b$10$...
 ```
 
-### 6. Test
+**2. Add to config.yaml**
+```yaml
+users:
+  - username: "carol"
+    password_hash: "$2b$10$..."
+    email: "carol@example.com"
+    roles: ["employee"]
+```
 
+**3. Restart tollgate**
 ```bash
-TOKEN="<paste token here>"
+sudo systemctl restart tollgate
+```
 
-# allowed
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/portainer/
+To revoke access — remove the user from `config.yaml` and restart. No token invalidation needed — cookie expires naturally or on next restart.
 
-# denied — no token
-curl http://localhost:8080/portainer/
+Roles are arbitrary strings. Define them in `users` and reference them in route `policy`. Common patterns:
 
-# denied — wrong method (if rules configured)
-curl -X DELETE -H "Authorization: Bearer $TOKEN" http://localhost:8080/portainer/api/users/1
+```yaml
+roles: ["admin"]             # full access
+roles: ["employee"]          # limited access
+roles: ["admin", "employee"] # multiple roles
 ```
 
 ---
@@ -156,7 +195,65 @@ sudo systemctl start tollgate
 docker compose up
 ```
 
-The compose stack starts tollgate and httpbin as a demo upstream. Use `config.example.yaml` as the config — it routes `/demo` to httpbin.
+The compose stack starts tollgate and httpbin as a demo upstream. Open `http://localhost:8080/` and sign in with the credentials from `config.example.yaml`.
+
+---
+
+## TLS / production deployment
+
+Tollgate listens on plain HTTP. Put a TLS terminator in front of it.
+
+**Option A — Cloudflare Tunnel** (recommended, no open ports)
+```bash
+cloudflared tunnel create tollgate
+cloudflared tunnel route dns tollgate tollgate.your-domain.com
+```
+```yaml
+# ~/.cloudflared/config.yml
+tunnel: <tunnel-id>
+ingress:
+  - hostname: tollgate.your-domain.com
+    service: http://localhost:8080
+  - service: http_status:404
+```
+
+**Option B — Caddy** (automatic Let's Encrypt)
+Caddyfile
+tollgate.your-domain.com {
+reverse_proxy localhost:8080
+}
+**Option C — nginx + certbot**
+```nginx
+server {
+    listen 443 ssl;
+    server_name tollgate.your-domain.com;
+    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+    }
+}
+```
+
+**Without a domain — VPN access**
+
+If you don't have a domain, expose tollgate only over a VPN (WireGuard, AmneziaWG). Users connect to VPN, then access `http://10.x.x.x:8080/`. No open ports, no domain needed.
+
+---
+
+## Protecting Docker services
+
+Bind services to `127.0.0.1` so they're only reachable through tollgate:
+
+```bash
+# before: accessible from anywhere
+docker run -p 9000:9000 portainer/portainer-ce
+
+# after: localhost only
+docker run -p 127.0.0.1:9000:9000 portainer/portainer-ce
+```
 
 ---
 
@@ -168,13 +265,11 @@ routes:
     upstream: "http://localhost:3000"
     strip_path: true
     policy:
-      # allow by JWT subject
-      allow_subjects: ["alice", "bob"]
+      allow_subjects: ["alice"]          # specific identity
+      # or
+      allow_roles: ["admin", "editor"]   # role-based
 
-      # or allow by role claim
-      allow_roles: ["admin", "editor"]
-
-      # optional: restrict by HTTP method and path
+      # optional: restrict by method and path
       rules:
         - methods: ["GET"]
           paths: ["/*"]
@@ -184,16 +279,16 @@ routes:
   - path: "/public"
     upstream: "http://localhost:3000"
     policy:
-      public: true   # no token required
+      public: true                       # no auth required
 ```
 
-Rules are evaluated after identity check. If `rules` is empty, any method and path is allowed for the authenticated identity. If `rules` is set, the request must match at least one rule.
+Rules are evaluated after identity check. If `rules` is empty — any method and path is allowed. If set — request must match at least one rule.
 
 ---
 
 ## Identity headers
 
-Tollgate strips the original `Authorization` header and injects:
+Tollgate strips `Authorization` and injects:
 
 | Header | Value |
 |---|---|
@@ -241,29 +336,15 @@ rate_limit:
 
 ---
 
-## Protecting Docker services
-
-If your services are exposed on `0.0.0.0`, restrict them to localhost and route through tollgate instead:
-
-```bash
-# before: accessible from anywhere
-docker run -p 9000:9000 portainer/portainer-ce
-
-# after: localhost only, tollgate is the only entry point
-docker run -p 127.0.0.1:9000:9000 portainer/portainer-ce
-```
-
----
-
 ## Roadmap
 
 - [x] v0.1 — RS256 JWT, iss/aud validation, YAML policy, audit log, reverse proxy
 - [x] v0.1 — method + path rules
 - [x] v0.1 — sliding window rate limiting
+- [x] v0.1 — login page, cookie auth, user management, dashboard
 - [ ] v0.2 — mTLS client certificates
 - [ ] v0.3 — Prometheus metrics (`/metrics`)
-- [ ] v0.4 — Multi-upstream routing by Host header
-- [ ] v0.5 — Login page with cookie-based auth (no browser extension needed)
+- [ ] v0.4 — multi-upstream routing by Host header
 
 ---
 
