@@ -14,6 +14,7 @@ Auth     AuthConfig `yaml:"auth"`
 Routes   []Route    `yaml:"routes"`
 AuditLog string     `yaml:"audit_log"`
 RateLimit RateLimitConfig `yaml:"rate_limit"`
+Users     []User          `yaml:"users"`
 }
 
 type RateLimitConfig struct {
@@ -25,6 +26,7 @@ type RateLimitConfig struct {
 type AuthConfig struct {
 JWTSecret        string `yaml:"jwt_secret"`
 JWTPublicKeyFile string `yaml:"jwt_public_key_file"`
+JWTPrivateKeyFile string `yaml:"jwt_private_key_file"`
 Issuer           string `yaml:"issuer"`
 Audience         string `yaml:"audience"`
 }
@@ -49,8 +51,15 @@ type Rule struct {
     Paths   []string `yaml:"paths"`
 }
 
+type User struct {
+	Username     string   `yaml:"username"`
+	PasswordHash string   `yaml:"password_hash"`
+	Email        string   `yaml:"email"`
+	Roles        []string `yaml:"roles"`
+}
+
 func (c *Config) GetAuth() (secret, pubKeyFile, issuer, audience string) {
-return c.Auth.JWTSecret, c.Auth.JWTPublicKeyFile, c.Auth.Issuer, c.Auth.Audience
+return "", c.Auth.JWTPublicKeyFile, c.Auth.Issuer, c.Auth.Audience
 }
 
 func Load(path string) (*Config, error) {

@@ -66,9 +66,14 @@ roles = claims.Roles
 dec := policy.Evaluate(route.Policy, claims, r)
 
 if !dec.Allowed {
-h.logger.Log(r, sub, roles, "deny", dec.Reason, route.Upstream, http.StatusForbidden)
-http.Error(w, "forbidden", http.StatusForbidden)
-return
+    h.logger.Log(r, sub, roles, "deny", dec.Reason, route.Upstream, http.StatusForbidden)
+    accept := r.Header.Get("Accept")
+    if strings.Contains(accept, "text/html") {
+        http.Redirect(w, r, "/login?redirect="+r.URL.Path, http.StatusSeeOther)
+        return
+    }
+    http.Error(w, "forbidden", http.StatusForbidden)
+    return
 }
 
 // Inject identity headers

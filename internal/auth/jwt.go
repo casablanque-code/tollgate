@@ -53,12 +53,28 @@ return v, nil
 return nil, errors.New("auth: either jwt_secret or jwt_public_key_file must be set")
 }
 
-func (v *Verifier) FromRequest(r *http.Request) (*Claims, error) {
-raw, err := extractBearer(r)
-if err != nil {
-return nil, err
+func LoadPrivateKey(path string) (*rsa.PrivateKey, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("auth: read private key: %w", err)
+	}
+	key, err := jwt.ParseRSAPrivateKeyFromPEM(data)
+	if err != nil {
+		return nil, fmt.Errorf("auth: parse private key: %w", err)
+	}
+	return key, nil
 }
-return v.Verify(raw)
+
+func (v *Verifier) FromRequest(r *http.Request) (*Claims, error) {
+	// сначала пробуем Authorization header
+	if raw, err := extractBearer(r); err == nil {
+		return v.Verify(raw)
+	}
+	// потом cookie
+	if cookie, err := r.Cookie("tollgate_token"); err == nil {
+		return v.Verify(cookie.Value)
+	}
+	return nil, errors.New("no token provided")
 }
 
 func (v *Verifier) Verify(tokenStr string) (*Claims, error) {
