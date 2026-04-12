@@ -2,3 +2,4 @@ tollgate
 config.yaml
 *.log
 .env
+keys/

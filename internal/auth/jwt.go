@@ -1,68 +1,121 @@
 package auth
 
 import (
-    "errors"
-    "fmt"
-    "net/http"
-    "strings"
+"crypto/rsa"
+"errors"
+"fmt"
+"net/http"
+"os"
+"strings"
 
-    "github.com/golang-jwt/jwt/v5"
+"github.com/golang-jwt/jwt/v5"
 )
 
-// Claims — наши кастомные поля поверх стандартных JWT claims
 type Claims struct {
-    jwt.RegisteredClaims
-    Roles  []string `json:"roles"`
-    Email  string   `json:"email"`
+jwt.RegisteredClaims
+Roles []string `json:"roles"`
+Email string   `json:"email"`
+}
+
+type AuthConfig interface {
+GetAuth() (secret, pubKeyFile, issuer, audience string)
 }
 
 type Verifier struct {
-    secret    []byte      // для HS256
-    publicKey interface{} // для RS256 (rsa.PublicKey)
+secret    []byte
+publicKey *rsa.PublicKey
+issuer    string
+audience  string
 }
 
-func NewVerifier(secret string) *Verifier {
-    return &Verifier{secret: []byte(secret)}
+func NewVerifier(cfg AuthConfig) (*Verifier, error) {
+secret, pubKeyFile, issuer, audience := cfg.GetAuth()
+v := &Verifier{issuer: issuer, audience: audience}
+
+if pubKeyFile != "" {
+data, err := os.ReadFile(pubKeyFile)
+if err != nil {
+return nil, fmt.Errorf("auth: read public key: %w", err)
+}
+key, err := jwt.ParseRSAPublicKeyFromPEM(data)
+if err != nil {
+return nil, fmt.Errorf("auth: parse public key: %w", err)
+}
+v.publicKey = key
+return v, nil
 }
 
-// FromRequest извлекает и верифицирует JWT из заголовка Authorization
+if secret != "" {
+v.secret = []byte(secret)
+return v, nil
+}
+
+return nil, errors.New("auth: either jwt_secret or jwt_public_key_file must be set")
+}
+
 func (v *Verifier) FromRequest(r *http.Request) (*Claims, error) {
-    raw, err := extractBearer(r)
-    if err != nil {
-        return nil, err
-    }
-    return v.Verify(raw)
+raw, err := extractBearer(r)
+if err != nil {
+return nil, err
+}
+return v.Verify(raw)
 }
 
 func (v *Verifier) Verify(tokenStr string) (*Claims, error) {
-    claims := &Claims{}
+claims := &Claims{}
 
-    token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
-        // Проверяем что алгоритм не подменили на "none"
-        if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-            return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-        }
-        return v.secret, nil
-    })
+token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+if v.publicKey != nil {
+if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+return nil, fmt.Errorf("expected RS256, got %v", t.Header["alg"])
+}
+return v.publicKey, nil
+}
+if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+return nil, fmt.Errorf("expected HS256, got %v", t.Header["alg"])
+}
+return v.secret, nil
+})
 
-    if err != nil {
-        return nil, fmt.Errorf("jwt verify: %w", err)
-    }
-    if !token.Valid {
-        return nil, errors.New("jwt: token invalid")
-    }
+if err != nil {
+return nil, fmt.Errorf("jwt verify: %w", err)
+}
+if !token.Valid {
+return nil, errors.New("jwt: token invalid")
+}
 
-    return claims, nil
+if v.issuer != "" {
+iss, _ := claims.GetIssuer()
+if iss != v.issuer {
+return nil, fmt.Errorf("jwt: issuer mismatch: got %q, want %q", iss, v.issuer)
+}
+}
+
+if v.audience != "" {
+aud, _ := claims.GetAudience()
+found := false
+for _, a := range aud {
+if a == v.audience {
+found = true
+break
+}
+}
+if !found {
+return nil, fmt.Errorf("jwt: audience mismatch: got %v, want %q", aud, v.audience)
+}
+}
+
+return claims, nil
 }
 
 func extractBearer(r *http.Request) (string, error) {
-    header := r.Header.Get("Authorization")
-    if header == "" {
-        return "", errors.New("authorization header missing")
-    }
-    parts := strings.SplitN(header, " ", 2)
-    if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-        return "", errors.New("authorization: expected 'Bearer <token>'")
-    }
-    return parts[1], nil
+header := r.Header.Get("Authorization")
+if header == "" {
+return "", errors.New("authorization header missing")
+}
+parts := strings.SplitN(header, " ", 2)
+if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+return "", errors.New("authorization: expected 'Bearer <token>'")
+}
+return parts[1], nil
 }
