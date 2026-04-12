@@ -155,6 +155,13 @@ func (h *Handler) showForm(w http.ResponseWriter, r *http.Request, errMsg string
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
+    // CSRF: проверяем Origin
+    origin := r.Header.Get("Origin")
+    host := r.Host
+    if origin != "" && origin != "http://"+host && origin != "https://"+host {
+        http.Error(w, "forbidden", http.StatusForbidden)
+        return
+    }
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 	redirect := r.FormValue("redirect")
@@ -179,7 +186,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		Expires:  time.Now().Add(h.expiry),
 	})
 
