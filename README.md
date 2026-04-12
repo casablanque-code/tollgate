@@ -1,16 +1,20 @@
 # tollgate
 
 Identity-aware Zero Trust reverse proxy. Sits in front of your services and enforces JWT-based access control before forwarding any request.
-[browser] → [tollgate :8080]
-│
-├── /login — username + password → JWT cookie
-├── verify RS256 JWT (iss, aud, exp)
-├── evaluate policy (subject / role / method / path)
-├── rate limit per IP
-├── inject identity headers
-└── forward to upstream
-│
-audit log (JSON)
+
+```
+[browser] → [tollgate :PORT]
+                │
+                ├── /login — username + password → JWT cookie
+                ├── verify RS256 JWT (iss, aud, exp)
+                ├── evaluate policy (subject / role / method / path)
+                ├── rate limit per IP
+                ├── inject identity headers
+                └── forward to upstream
+                         │
+                    audit log (JSON)
+```
+
 Built in Go. Single binary, single config file, no external dependencies.
 
 ---
@@ -52,7 +56,7 @@ Keep `keys/private.pem` secret — it never leaves the server. Tollgate uses it 
 
 ```bash
 pip3 install bcrypt
-python3 scripts/hash_password.py "your-password"
+python3 scripts/hash_password.py "USER_PASSWORD"
 ```
 
 ### 4. Configure
@@ -64,7 +68,7 @@ cp config.example.yaml config.yaml
 Edit `config.yaml`:
 
 ```yaml
-listen: ":8080"
+listen: ":PORT"
 
 auth:
   jwt_public_key_file: "keys/public.pem"
@@ -80,13 +84,13 @@ rate_limit:
   window: 1m
 
 users:
-  - username: "alice"
+  - username: "USER_NAME"
     password_hash: "$2b$10$..."   # from hash_password.py
-    email: "alice@example.com"
+    email: "USER_EMAIL"
     roles: ["admin"]
-  - username: "bob"
+  - username: "USER_NAME"
     password_hash: "$2b$10$..."
-    email: "bob@example.com"
+    email: "USER_EMAIL"
     roles: ["employee"]
 
 routes:
@@ -118,7 +122,7 @@ go build -o tollgate ./cmd/tollgate/
 ./tollgate --config config.yaml
 ```
 
-Open `http://localhost:8080/` — you will be redirected to the login page.
+Open `http://localhost:PORT/` — you will be redirected to the login page.
 
 ---
 
@@ -128,16 +132,16 @@ Users are defined in `config.yaml`. To add a user:
 
 **1. Generate a password hash**
 ```bash
-python3 scripts/hash_password.py "password123"
+python3 scripts/hash_password.py "USER_PASSWORD"
 # → $2b$10$...
 ```
 
 **2. Add to config.yaml**
 ```yaml
 users:
-  - username: "carol"
+  - username: "USER_NAME"
     password_hash: "$2b$10$..."
-    email: "carol@example.com"
+    email: "USER_EMAIL"
     roles: ["employee"]
 ```
 
@@ -195,7 +199,7 @@ sudo systemctl start tollgate
 docker compose up
 ```
 
-The compose stack starts tollgate and httpbin as a demo upstream. Open `http://localhost:8080/` and sign in with the credentials from `config.example.yaml`.
+The compose stack starts tollgate and httpbin as a demo upstream. Open `http://localhost:PORT/` and sign in with the credentials from `config.example.yaml`.
 
 ---
 
@@ -213,14 +217,14 @@ cloudflared tunnel route dns tollgate tollgate.your-domain.com
 tunnel: <tunnel-id>
 ingress:
   - hostname: tollgate.your-domain.com
-    service: http://localhost:8080
+    service: http://localhost:PORT
   - service: http_status:404
 ```
 
 **Option B — Caddy** (automatic Let's Encrypt)
 Caddyfile
 tollgate.your-domain.com {
-reverse_proxy localhost:8080
+reverse_proxy localhost:PORT
 }
 **Option C — nginx + certbot**
 ```nginx
@@ -230,7 +234,7 @@ server {
     ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
     location / {
-        proxy_pass http://localhost:8080;
+        proxy_pass http://localhost:PORT;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
     }
@@ -265,7 +269,7 @@ routes:
     upstream: "http://localhost:3000"
     strip_path: true
     policy:
-      allow_subjects: ["alice"]          # specific identity
+      allow_subjects: ["USER_NAME"]          # specific identity
       # or
       allow_roles: ["admin", "editor"]   # role-based
 
@@ -310,7 +314,7 @@ Every request produces one JSON line:
   "method": "DELETE",
   "path": "/api/users/1",
   "remote_ip": "127.0.0.1:41544",
-  "subject": "alice",
+  "subject": "USER_NAME",
   "roles": ["admin"],
   "decision": "deny",
   "reason": "denied: no rule allows method=DELETE path=/api/users/1",
