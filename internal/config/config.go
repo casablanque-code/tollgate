@@ -33,6 +33,12 @@ type Policy struct {
 AllowSubjects []string `yaml:"allow_subjects"`
 AllowRoles    []string `yaml:"allow_roles"`
 Public        bool     `yaml:"public"`
+Rules         []Rule   `yaml:"rules"`
+}
+
+type Rule struct {
+    Methods []string `yaml:"methods"`
+    Paths   []string `yaml:"paths"`
 }
 
 func (c *Config) GetAuth() (secret, pubKeyFile, issuer, audience string) {

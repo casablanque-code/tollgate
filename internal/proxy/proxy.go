@@ -51,7 +51,7 @@ sub = claims.Subject
 roles = claims.Roles
 }
 
-dec := policy.Evaluate(route.Policy, claims)
+dec := policy.Evaluate(route.Policy, claims, r)
 
 if !dec.Allowed {
 h.logger.Log(r, sub, roles, "deny", dec.Reason, route.Upstream, http.StatusForbidden)
