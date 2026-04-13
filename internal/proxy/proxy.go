@@ -13,6 +13,31 @@ import (
 "github.com/casablanque-code/tollgate/internal/ratelimit"
 )
 
+// checkCSRF проверяет Origin/Referer для mutating методов
+func checkCSRF(r *http.Request) bool {
+    method := r.Method
+    if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
+        return true
+    }
+    // API клиенты с Bearer токеном — не браузер, CSRF не применяется
+    if r.Header.Get("Authorization") != "" {
+        return true
+    }
+    // cookie-based запросы — проверяем Origin/Referer
+    host := r.Host
+    origin := r.Header.Get("Origin")
+    if origin != "" {
+        return origin == "http://"+host || origin == "https://"+host
+    }
+    referer := r.Header.Get("Referer")
+    if referer != "" {
+        return strings.HasPrefix(referer, "http://"+host) ||
+            strings.HasPrefix(referer, "https://"+host)
+    }
+    // нет ни Origin ни Referer — блокируем
+    return false
+}
+
 type Handler struct {
 routes   []config.Route
 verifier *auth.Verifier
@@ -39,6 +64,13 @@ if h.limiter != nil {
         http.Error(w, "too many requests", http.StatusTooManyRequests)
         return
     }
+}
+
+// CSRF check для mutating методов
+if !checkCSRF(r) {
+    h.logger.Log(r, "", nil, "deny", "CSRF check failed", "", http.StatusForbidden)
+    http.Error(w, "forbidden", http.StatusForbidden)
+    return
 }
 
 // Strip path prefix перед форвардом
