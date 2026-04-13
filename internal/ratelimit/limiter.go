@@ -101,3 +101,8 @@ func (l *Limiter) cleanupLoop() {
 		l.mu.Unlock()
 	}
 }
+
+// AllowSubject лимитирует по subject после аутентификации
+func (l *Limiter) AllowSubject(subject string) bool {
+return l.Allow("sub:" + subject)
+}

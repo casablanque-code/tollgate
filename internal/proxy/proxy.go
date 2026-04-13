@@ -95,6 +95,15 @@ sub = claims.Subject
 roles = claims.Roles
 }
 
+// rate limit по subject если аутентифицирован
+if h.limiter != nil && claims != nil {
+    if !h.limiter.AllowSubject(claims.Subject) {
+        h.logger.Log(r, sub, roles, "deny", "rate limit exceeded (subject)", "", http.StatusTooManyRequests)
+        http.Error(w, "too many requests", http.StatusTooManyRequests)
+        return
+    }
+}
+
 dec := policy.Evaluate(route.Policy, claims, r)
 
 if !dec.Allowed {
