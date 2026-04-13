@@ -5,12 +5,11 @@ services:
       - "8080:8080"
     volumes:
       - ./config.example.yaml:/app/config.yaml:ro
+      - ./keys:/app/keys:ro
     depends_on:
       - httpbin
-    environment:
-      - TOLLGATE_CONFIG=/app/config.yaml
+    restart: unless-stopped
 
   httpbin:
     image: kennethreitz/httpbin
-    ports:
-      - "8081:80"
+    restart: unless-stopped

@@ -196,10 +196,21 @@ sudo systemctl start tollgate
 ## Run with Docker Compose
 
 ```bash
+# 1. generate keys
+bash scripts/gen_keys.sh
+
+# 2. start the stack
 docker compose up
+
+# 3. open http://localhost:8080
+# login: admin / password123
+# login: user / password123
 ```
 
-The compose stack starts tollgate and httpbin as a demo upstream. Open `http://localhost:PORT/` and sign in with the credentials from `config.example.yaml`.
+The compose stack starts tollgate and httpbin as a demo upstream.
+- `/demo` — accessible to both admin and user (GET, POST only)
+- `/admin` — accessible to admin only
+- `/health` — public, no auth required
 
 ---
 

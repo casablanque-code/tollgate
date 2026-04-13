@@ -3,9 +3,10 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -o tollgate ./cmd/tollgate/
+RUN CGO_ENABLED=0 go build -o tollgate ./cmd/tollgate/
 
 FROM alpine:3.19
+RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /app/tollgate .
 ENTRYPOINT ["./tollgate", "--config", "/app/config.yaml"]

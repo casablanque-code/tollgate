@@ -1,27 +1,45 @@
-listen: ":8080"
+listen: ":PORT"
 
 auth:
-  jwt_secret: "change-me-use-strong-secret"
+  jwt_public_key_file: "keys/public.pem"
+  jwt_private_key_file: "keys/private.pem"
+  issuer: "tollgate"
+  audience: "tollgate"
 
 audit_log: "stdout"
 
+rate_limit:
+  enabled: true
+  max: 100
+  window: 1m
+
+users:
+  - username: "admin"
+    password_hash: "$2b$10$bSGAuBPkmGBMGV9Fe7gXCubkBSHzBgBXGHwSBqTMJDoFqYSjaOfVm"
+    email: "admin@example.com"
+    roles: ["admin"]
+  - username: "user"
+    password_hash: "$2b$10$bSGAuBPkmGBMGV9Fe7gXCubkBSHzBgBXGHwSBqTMJDoFqYSjaOfVm"
+    email: "user@example.com"
+    roles: ["employee"]
+
 routes:
-  - path: "/portainer"
-    upstream: "http://localhost:9000"
-    policy:
-      allow_roles: ["admin"]
-
-  - path: "/n8n"
-    upstream: "http://localhost:5678"
-    policy:
-      allow_roles: ["admin"]
-
   - path: "/demo"
-    upstream: "http://httpbin.org"
+    upstream: "http://httpbin:80"
+    strip_path: true
+    policy:
+      allow_roles: ["admin", "employee"]
+      rules:
+        - methods: ["GET", "POST"]
+          paths: ["/*"]
+
+  - path: "/admin"
+    upstream: "http://httpbin:80"
+    strip_path: true
     policy:
       allow_roles: ["admin"]
 
   - path: "/health"
-    upstream: "http://localhost:9000"
+    upstream: "http://httpbin:80"
     policy:
       public: true
