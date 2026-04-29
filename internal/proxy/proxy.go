@@ -5,6 +5,7 @@ import (
 "net/http/httputil"
 "net/url"
 "strings"
+"path"
 
 "github.com/casablanque-code/tollgate/internal/audit"
 "github.com/casablanque-code/tollgate/internal/auth"
@@ -60,6 +61,12 @@ return
 r.Header.Del("X-Tollgate-Subject")
 r.Header.Del("X-Tollgate-Email")
 r.Header.Del("X-Tollgate-Roles")
+
+// нормализуем path — предотвращаем traversal атаки
+r.URL.Path = path.Clean(r.URL.Path)
+if r.URL.RawPath != "" {
+    r.URL.RawPath = path.Clean(r.URL.RawPath)
+}
 
 // Security: удаляем method override headers — нельзя обойти method rules
 r.Header.Del("X-HTTP-Method-Override")
