@@ -56,6 +56,16 @@ http.Error(w, "not found", http.StatusNotFound)
 return
 }
 
+// Security: удаляем входящие identity headers — клиент не может их подделать
+r.Header.Del("X-Tollgate-Subject")
+r.Header.Del("X-Tollgate-Email")
+r.Header.Del("X-Tollgate-Roles")
+
+// Security: удаляем method override headers — нельзя обойти method rules
+r.Header.Del("X-HTTP-Method-Override")
+r.Header.Del("X-Method-Override")
+r.Header.Del("_method")
+
 // Rate limiting
 if h.limiter != nil {
     ip := ratelimit.ExtractIP(r)
@@ -130,6 +140,12 @@ r.Header.Del("Authorization")
 // Proxy
 target, _ := url.Parse(route.Upstream)
 proxy := httputil.NewSingleHostReverseProxy(target)
+proxy.Director = func(req *http.Request) {
+    req.URL.Scheme = target.Scheme
+    req.URL.Host = target.Host
+    req.Host = target.Host
+    // не добавляем X-Forwarded-For — это задача внешнего TLS terminator
+}
 
 rw := &responseWriter{ResponseWriter: w}
 proxy.ServeHTTP(rw, r)

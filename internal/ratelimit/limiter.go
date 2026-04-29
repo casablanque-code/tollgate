@@ -64,12 +64,11 @@ func (l *Limiter) Allow(ip string) bool {
 	return true
 }
 
-// ExtractIP достаёт реальный IP из запроса
+// ExtractIP достаёт реальный IP из запроса.
+// X-Forwarded-For намеренно игнорируется — без TLS terminator
+// этот заголовок можно подделать и обойти rate limit.
+// Когда появится CF Tunnel или nginx — включить обратно.
 func ExtractIP(r *http.Request) string {
-	// X-Forwarded-For если стоим за nginx/CF
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
-	}
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
