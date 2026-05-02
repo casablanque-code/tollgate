@@ -1,0 +1,39 @@
+listen: ":7777"
+
+auth:
+  jwt_public_key_file: "keys/public.pem"
+  jwt_private_key_file: "keys/private.pem"
+  issuer: "tollgate"
+  audience: "tollgate"
+
+audit_log: "/var/log/tollgate/audit.log"
+
+rate_limit:
+  enabled: true
+  max: 200
+  window: 1m
+
+users:
+  - username: "${ADMIN_USER}"
+    password_hash: "${ADMIN_PASSWORD_HASH}"
+    email: "${ADMIN_EMAIL}"
+    roles: ["admin"]
+
+routes:
+  - path: "/n8n"
+    upstream: "http://n8n:5678"
+    strip_path: true
+    policy:
+      allow_roles: ["admin"]
+
+  - path: "/portainer"
+    upstream: "http://portainer:9000"
+    strip_path: false
+    policy:
+      allow_roles: ["admin"]
+
+  - path: "/zabbix"
+    upstream: "http://zabbix-web:8080"
+    strip_path: true
+    policy:
+      allow_roles: ["admin"]

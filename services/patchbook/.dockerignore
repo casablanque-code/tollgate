@@ -1,0 +1,5 @@
+chroma_db/
+onnx_cache/
+notes/
+__pycache__/
+*.pyc

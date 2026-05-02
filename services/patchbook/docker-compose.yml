@@ -1,0 +1,21 @@
+version: '3.8'
+
+# Copy .env.example to .env and adjust values before running.
+# Ollama must be running on the host (default port 11434).
+# network_mode: host lets the container reach host's Ollama directly.
+
+services:
+  patchbook:
+    build: .
+    network_mode: host
+    volumes:
+      - ./notes:/app/notes
+      - ./chroma_db:/app/chroma_db
+      - ./onnx_cache:/root/.cache/chroma/onnx_models
+    environment:
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5:1.5b}
+      - CHUNK_SIZE=${CHUNK_SIZE:-400}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-80}
+      - N_RESULTS=${N_RESULTS:-5}
+    restart: unless-stopped
